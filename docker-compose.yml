@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres-db:
+    image: postgres:latest
+    container_name: postgres-db
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: brapi_db
+    ports:
+      - "5432:5432"
+    networks:
+      - brapi-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  brapi-server:
+    image: brapicoordinatorselby/brapi-java-server:v1
+    container_name: brapi-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./properties/application.properties:/home/brapi/properties/application.properties
+    networks:
+      - brapi-network
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+
+  db-populator:
+    image: postgres:latest
+    volumes:
+      - ./import.sql:/import.sql
+    command: >
+      bash -c "
+        sleep 30 &&
+        PGPASSWORD=mysecretpassword psql -h postgres-db -U postgres -d brapi_db -f /import.sql
+      "
+    networks:
+      - brapi-network
+    depends_on:
+      - brapi-server
+
+  nextjs-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.nextjs
+    ports:
+      - "3000:3000"
+    networks:
+      - brapi-network
+
+networks:
+  brapi-network:
+    driver: bridge
